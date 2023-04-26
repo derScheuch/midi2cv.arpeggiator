@@ -1,5 +1,5 @@
 #include <MIDI.h>
-#include "MCP_DAC.h"
+#include <SPI.h>
 
 // define INPUT and OUTPUT Pins
 
@@ -26,9 +26,20 @@
 #define DEBUG false
 #define SEMITONE_VOLTAGE 86
 
-// define MIDI Control Channels
+// define some MIDI Constants
 #define WHEEL 1
 #define SUSTAIN_PEDAL 64
+
+// define some constant values
+#define EXPRESSION_MODE_VELOCITY 0
+#define EXPRESSION_MODE_AFTERTOUCH 1
+#define EXPRESSION_MODE_WHEEL 2
+
+#define SEQUENCER_OFF 0
+#define SEQUENCER_MODE_RECORD 1
+#define SEQUENCER_MODE_PLAY 2
+#define SEQUENCER_MODE_STOP 3
+#define SEQUENCVER_MODE_OVERWRITE 4
 
 
 struct NANO_PINS {
@@ -52,12 +63,23 @@ struct CLOCK {
   int clockCounter;
 };
 
+
+struct SEQUENCER {
+  int pointer;
+  int length;
+  int buffer[128];
+  int shift;
+  int mode;
+};
+
+
 struct ARPEGGIATOR {
   NANO_PINS nanoPins;
   CLOCK clock;
+  SEQUENCER sequencer;
   long currentTime;
   int nextGateLength;
-  long lastArpAttackMs;
+  long lastAutomaticNoteAttackMs;
   int currentNote;
   int currentMidiBend;
   int bendRange;
@@ -67,12 +89,15 @@ struct ARPEGGIATOR {
   bool sustainPedal;
 };
 
+
+
 ARPEGGIATOR arpeggiator;
 
 int thePressedKeyBuffer[] = { 0, 12, 24, 28, 31, 6, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
 int theNoteBuffer[] = { 5, 12, 24, 28, 31, 6, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
 int theUpBuffer[] = { 5, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
 int theDownBuffer[] = { 5, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+
 bool bufferUpChanged;
 bool bufferDownChanged;
 bool bufferChanged;
@@ -89,14 +114,6 @@ int theMatrix[][10] = { { -1, 8, 1, 1, 1, 1, -2, 1, 1, -4 },
                         { -1, 2, 0, 1, 0, 0, 0, 0, 0, 0 },
                         { -1, 1, -1, 0, 0, 0, 0, 0, 0, 0 } };
 
-
-
-
-
-
-#define EXPRESSION_MODE_VELOCITY 0
-#define EXPRESSION_MODE_AFTERTOUCH 1
-#define EXPRESSION_MODE_WHEEL 2
 
 
 
@@ -133,7 +150,7 @@ void initialize() {
   setCurrentNote(0);
   setCurrentExpression(0);
   setBitchPend(0);
-  arpeggiator.clock.clockMode = false;
+  resetClock(arpeggiator.clock);
   arpeggiator.bendRange = 2;
   arpeggiator.currentMidiBend = 0;
   arpeggiator.expressionMode = EXPRESSION_MODE_VELOCITY;
@@ -145,12 +162,40 @@ void handleNoteOn(byte inChannel, byte inNote, byte inVelocity) {
   if (arpeggiator.expressionMode == EXPRESSION_MODE_VELOCITY) {
     setCurrentExpression(inVelocity);
   }
-  addNoteToBuffer(inNote - 21);
+  if (arpeggiator.sequencer.mode != SEQUENCER_OFF) {
+    if (arpeggiator.sequencer.mode == SEQUENCER_MODE_RECORD) {
+      addNoteToSequencer(inNote);
+      setCurrentNote(inNote);
+    } else if (arpeggiator.sequencer.mode == SEQUENCER_MODE_PLAY) {
+      arpeggiator.sequencer.shift = inNote;
+    } else if (arpeggiator.sequencer.mode == SEQUENCER_MODE_STOP) {
+      arpeggiator.sequencer.shift = inNote;
+      arpeggiator.sequencer.mode = SEQUENCER_MODE_PLAY;
+    } else if (arpeggiator.sequencer.mode == SEQUENCVER_MODE_OVERWRITE) {
+      replaceNoteInSequencer(inNote);
+    }
+  } else {
+    addNoteToBuffer(inNote);
+  }
+}
+
+void addNoteToSequencer(int inNote) {
+  arpeggiator.sequencer.buffer[arpeggiator.sequencer.length++] = inNote;
+}
+void replaceNoteInSequencer(int inNote) {
+  arpeggiator.sequencer.buffer[arpeggiator.sequencer.pointer] = inNote;
 }
 
 void handleNoteOff(byte inChannel, byte inNote, byte inVelocity) {
-  removeNoteFromBuffer(inNote - 21);
+  if (arpeggiator.sequencer.mode != SEQUENCER_OFF) {
+    if (arpeggiator.sequencer.mode == SEQUENCER_MODE_RECORD) {
+      setGateOff();
+    }
+  } else {
+    removeNoteFromBuffer(inNote);
+  }
 }
+
 void handlePitchBend(byte channel, int bend) {
   setBitchPend(bend);
 }
@@ -159,17 +204,17 @@ void handleControlChange(byte inChannel, byte number, byte value) {
   if (number == SUSTAIN_PEDAL) {
     if (value == 0) {
       arpeggiator.sustainPedal = false;
-      if (isSettingMode()) {
+      if (arpeggiator.nanoPins.isConfigMode) {
         arpeggiator.arpeggioHoldMode = false;
       }
     } else {
       arpeggiator.sustainPedal = true;
-      if (isSettingMode()) {
+      if (arpeggiator.nanoPins.isConfigMode) {
         arpeggiator.arpeggioHoldMode = true;
       }
     }
   } else if (number == WHEEL) {
-    if (isSettingMode() && value > 48) {
+    if (arpeggiator.nanoPins.isConfigMode && value > 48) {
       arpeggiator.expressionMode = EXPRESSION_MODE_WHEEL;
     }
     if (arpeggiator.expressionMode == EXPRESSION_MODE_WHEEL) {
@@ -179,7 +224,7 @@ void handleControlChange(byte inChannel, byte number, byte value) {
 }
 
 void handleAfterTouchChannel(byte channel, byte pressure) {
-  if (isSettingMode() && pressure > 48) {
+  if (arpeggiator.nanoPins.isConfigMode && pressure > 48) {
     arpeggiator.expressionMode = EXPRESSION_MODE_AFTERTOUCH;
   }
   if (arpeggiator.expressionMode == EXPRESSION_MODE_AFTERTOUCH) {
@@ -190,13 +235,14 @@ void handleAfterTouchChannel(byte channel, byte pressure) {
 
 void loop() {
   arpeggiator.currentTime = millis();
-  readNanoPins();
+  prepareNanoPins();
+  prepareSequencer();
+  prepareClock();
   MIDI.read();
-  handleClock();
-  handleMusic();
+  makeMusic();
 }
 
-void readNanoPins() {
+void prepareNanoPins() {
   arpeggiator.nanoPins.arpeggiatorGateRatio = analogRead(A_IN_ARPEGGIATOR_GATE);
   arpeggiator.nanoPins.arpeggiatorSpeed = analogRead(A_IN_ARPEGGIATOR_SPEED);
   arpeggiator.nanoPins.argeggioType = analogRead(A_IN_ARPEGGIATOR_TYPE);
@@ -208,45 +254,70 @@ void readNanoPins() {
   arpeggiator.nanoPins.clockIn = digitalRead(D_IN_TRIG);
 }
 
+void prepareSequencer() {
+  if (arpeggiator.sequencer.mode == SEQUENCER_OFF && arpeggiator.nanoPins.isSequencerMode) {
+    arpeggiator.sequencer.mode = SEQUENCER_MODE_STOP;
+    arpeggiator.sequencer.shift = 0;
+  } else if (arpeggiator.sequencer.mode != SEQUENCER_OFF && !arpeggiator.nanoPins.isSequencerMode) {
+    arpeggiator.sequencer.mode = SEQUENCER_OFF;
+  }
 
+  if (arpeggiator.nanoPins.isConfigMode && arpeggiator.sequencer.mode != SEQUENCER_OFF) {
+    if (arpeggiator.sequencer.mode == SEQUENCER_MODE_STOP) {
+      arpeggiator.sequencer.mode = SEQUENCER_MODE_RECORD;
+      arpeggiator.sequencer.length = arpeggiator.sequencer.pointer = 0;
+    } else if (arpeggiator.sequencer.mode == SEQUENCER_MODE_RECORD && arpeggiator.sequencer.length > 0) {
+      arpeggiator.sequencer.mode = SEQUENCER_MODE_STOP;
+    } else if (arpeggiator.sequencer.mode == SEQUENCER_MODE_PLAY) {
+      arpeggiator.sequencer.mode = SEQUENCVER_MODE_OVERWRITE;
+    }
+  } else if (arpeggiator.sequencer.mode == SEQUENCVER_MODE_OVERWRITE) {
+    arpeggiator.sequencer.mode = SEQUENCER_MODE_PLAY;
+  }
+}
 
-void handleClock() {
+void prepareClock() {
 
   if (arpeggiator.clock.currentClock != arpeggiator.nanoPins.clockIn) {
     arpeggiator.clock.clockMode = true;
     arpeggiator.clock.currentClock = arpeggiator.nanoPins.clockIn;
+    // In fact the transistor that shields the nano input pin
+    // inverts the clock signbal. if pin has fallen to ground the clock itself is up.
     if (!arpeggiator.clock.currentClock) {
       if (arpeggiator.clock.lastClockSignal > 0) {
         arpeggiator.clock.clockDuration = arpeggiator.currentTime - arpeggiator.clock.lastClockSignal;
       } else {
-        arpeggiator.clock.clockDuration = 500;  // just guessing
+        arpeggiator.clock.clockDuration = 500;  // just guessing for the first time interval
       }
       arpeggiator.clock.lastClockSignal = arpeggiator.currentTime;
       ++arpeggiator.clock.clockCounter;
     }
   } else {
     if (arpeggiator.clock.clockMode && arpeggiator.currentTime - arpeggiator.clock.lastClockSignal > 8000) {
-      arpeggiator.clock.clockMode = false;
+      resetClock(arpeggiator.clock);
     }
   }
 }
 
+void resetClock(CLOCK clock) {
+  clock.clockMode = false;
+  clock.lastClockSignal = -1;
+  clock.clockCounter = 0;
+}
 
-void handleMusic() {
-  if (isArpeggiatorMode()) {
+void makeMusic() {
+  if (arpeggiator.nanoPins.isSequencerMode) {
+    handleSequencer();
+  } else if (arpeggiator.nanoPins.isArpeggiatorMode) {
     handleArpeggiator();
   } else {
     handleSingleNote();
   }
 }
 
-boolean isArpeggiatorMode() {
-  return digitalRead(D_IN_ARPEGGIATOR_OR_SINGLE);
-}
 
-boolean isSettingMode() {
-  return !digitalRead(D_IN_MODE);
-}
+
+
 
 void handleSingleNote() {
   int nextNoteToPlay = getNextSingleNoteToPlay();
@@ -258,29 +329,30 @@ void handleSingleNote() {
   }
 }
 
-int *getSelectedNoteBuffer() {
-  if (isArpeggiatorMode()) {
-    if (!digitalRead(D_IN_NOTE_PRIORITY_1)) {
+int *getNoteBufferForArpeggio() {
+    if (!arpeggiator.nanoPins.isTP_1) {
       return getUpBuffer();
     } else {
-      if (digitalRead(D_IN_NOTE_PRIORITY_2)) {
+      if (arpeggiator.nanoPins.isTP_2) {
         return getDownBuffer();
       } else {
         return theNoteBuffer;
       }
     }
-  } else {
-    if (!digitalRead(D_IN_NOTE_PRIORITY_1)) {
+   
+}
+int *getNoteBufferForSingleNote() {
+    if (!arpeggiator.nanoPins.isTP_1) {
       return theNoteBuffer;
     } else {
-      if (digitalRead(D_IN_NOTE_PRIORITY_2)) {
+      if (arpeggiator.nanoPins.isTP_2) {
         return getDownBuffer();
       } else {
         return getUpBuffer();
       }
     }
   }
-}
+
 
 int *getDownBuffer() {
   if (bufferDownChanged) {
@@ -319,7 +391,7 @@ int sortAsc(const void *cmp1, const void *cmp2) {
 }
 
 int getNextSingleNoteToPlay() {
-  int *noteBuffer = getSelectedNoteBuffer();
+  int *noteBuffer = getNoteBufferForSingleNote();
   if (noteBuffer[0] == 0) return -1;
   else {
     return noteBuffer[noteBuffer[0]];
@@ -332,7 +404,7 @@ int *getSelectedMatrix() {
   return theMatrix[matrix];
 }
 
-boolean isNextArpNoteToBePlayed() {
+boolean isNextAutomaticNoteToBePlayed() {
   if (arpeggiator.clock.clockMode) {
     //             0  1.    2.    3.    4   5   6   7
     // ratios -> 1/8  1/4   1/3   1/2   1   2   4   8
@@ -364,40 +436,61 @@ boolean isNextArpNoteToBePlayed() {
 
 
 
-    if (arpeggiator.clock.lastClockSignal > arpeggiator.lastArpAttackMs && arpeggiator.clock.clockCounter == multiple) {
+    if (arpeggiator.clock.lastClockSignal > arpeggiator.lastAutomaticNoteAttackMs && arpeggiator.clock.clockCounter == multiple) {
       arpeggiator.clock.clockCounter = 0;
-      arpeggiator.nextGateLength = ((((arpeggiator.clock.clockDuration * multiple) / divide) / 8) * (arpeggiator.nanoPins.arpeggiatorGateRatio / 8)) / 16;
+      arpeggiator.nextGateLength = ((((arpeggiator.clock.clockDuration * multiple) / divide) >> 3) * (arpeggiator.nanoPins.arpeggiatorGateRatio >> 3)) >>4;
       return true;
-    } else if (divide > 1 && arpeggiator.currentTime - arpeggiator.lastArpAttackMs > (arpeggiator.clock.clockDuration / divide + 1)) {
-      arpeggiator.nextGateLength = ((((arpeggiator.clock.clockDuration * multiple) / divide) / 8) * (arpeggiator.nanoPins.arpeggiatorGateRatio / 8)) /16;
+    } else if (divide > 1 && arpeggiator.currentTime - arpeggiator.lastAutomaticNoteAttackMs > (arpeggiator.clock.clockDuration / divide + 1)) {
+      arpeggiator.nextGateLength = ((((arpeggiator.clock.clockDuration * multiple) / divide) >> 3) * (arpeggiator.nanoPins.arpeggiatorGateRatio >> 3)) >> 4;
       arpeggiator.clock.clockCounter = 0;
       return true;
     }
     return false;
   } else {
-    if (arpeggiator.currentTime - arpeggiator.lastArpAttackMs > arpeggiator.nanoPins.arpeggiatorSpeed) {
-      arpeggiator.nextGateLength = ((arpeggiator.nanoPins.arpeggiatorSpeed / 8) * (arpeggiator.nanoPins.arpeggiatorGateRatio / 8)) / 16;
+    if (arpeggiator.currentTime - arpeggiator.lastAutomaticNoteAttackMs > arpeggiator.nanoPins.arpeggiatorSpeed) {
+      arpeggiator.nextGateLength = ((arpeggiator.nanoPins.arpeggiatorSpeed >> 3) * (arpeggiator.nanoPins.arpeggiatorGateRatio >> 3)) >> 4;
       return true;
     }
     return false;
   }
 }
 
-boolean isArpNoteOtBeSetOff() {
-  return arpeggiator.currentTime - arpeggiator.lastArpAttackMs > arpeggiator.nextGateLength;
+boolean isAutomaticNoteToRelease() {
+  return arpeggiator.currentTime - arpeggiator.lastAutomaticNoteAttackMs > arpeggiator.nextGateLength;
 }
 
-void handleArpeggiator() {
-  if (isNextArpNoteToBePlayed()) {
-    int noteToPlay = nextArpeggiatorNote(getSelectedNoteBuffer(), getSelectedMatrix());
-    setCurrentNote(noteToPlay);
+int nextSequencerNote() {
+  ++ arpeggiator.sequencer.pointer;
+  if (arpeggiator.sequencer.pointer >= arpeggiator.sequencer.length) {
+    arpeggiator.sequencer.pointer = 0;
+  }
+  return arpeggiator.sequencer.buffer[arpeggiator.sequencer.pointer];
+}
 
-    arpeggiator.lastArpAttackMs = arpeggiator.currentTime;
+void handleSequencer() {
+  if (arpeggiator.sequencer.mode == SEQUENCER_MODE_PLAY || arpeggiator.sequencer.mode == SEQUENCVER_MODE_OVERWRITE) {
+    if (isNextAutomaticNoteToBePlayed()) {
+      setCurrentNote(nextSequencerNote() + arpeggiator.sequencer.shift);
+      arpeggiator.lastAutomaticNoteAttackMs = arpeggiator.currentTime;
+    }
     if (arpeggiator.currentNote > -1) {
       setGateOn();
     }
   }
-  if (isArpNoteOtBeSetOff()) {
+  if (isAutomaticNoteToRelease()) {
+    setGateOff();
+  }
+}
+
+void handleArpeggiator() {
+  if (isNextAutomaticNoteToBePlayed()) {
+    setCurrentNote(nextArpeggiatorNote(getNoteBufferForArpeggio(), getSelectedMatrix()));
+    arpeggiator.lastAutomaticNoteAttackMs = arpeggiator.currentTime;
+    if (arpeggiator.currentNote > -1) {
+      setGateOn();
+    }
+  }
+  if (isAutomaticNoteToRelease()) {
     setGateOff();
   }
 }
@@ -488,13 +581,13 @@ void setCurrentNote(int noteToPlay) {
 
 
 void adjustNote() {
-  if (arpeggiator.currentNote < 0) {
+  if (arpeggiator.currentNote < 48) {
     setGateOff();
   } else {
-    if (arpeggiator.currentNote > 48) {
-      arpeggiator.currentNote = 48;
+    if (arpeggiator.currentNote > 96) {
+      arpeggiator.currentNote = 96;
     }
-    int voltage = arpeggiator.currentNote * SEMITONE_VOLTAGE;
+    int voltage = (arpeggiator.currentNote - 48) * SEMITONE_VOLTAGE;
     voltage += (arpeggiator.currentMidiBend * arpeggiator.bendRange * SEMITONE_VOLTAGE) / 64;
     setVoltage(D_OUT_DAC_1, 0, 1, voltage);
     if (DEBUG) {
