@@ -23,7 +23,7 @@
 #define D_OUT_GATE 3
 #define D_OUT_DAC_1 9
 
-#define DEBUG true
+#define DEBUG false
 #define SEMITONE_VOLTAGE 86
 
 // define MIDI Control Channels
@@ -31,8 +31,43 @@
 #define SUSTAIN_PEDAL 64
 
 
+struct NANO_PINS {
+  bool isConfigMode;
+  bool isArpeggiatorMode;
+  bool isSequencerMode;
+  bool isSettingMode;
+  bool isTP_1;
+  bool isTP_2;
+  int arpeggiatorSpeed;
+  int arpeggiatorGateRatio;
+  int argeggioType;
+  int clockIn;
+};
 
+struct CLOCK {
+  bool currentClock;
+  bool clockMode;
+  long lastClockSignal;
+  int clockDuration;
+  int clockCounter;
+};
 
+struct ARPEGGIATOR {
+  NANO_PINS nanoPins;
+  CLOCK clock;
+  long currentTime;
+  int nextGateLength;
+  long lastArpAttackMs;
+  int currentNote;
+  int currentMidiBend;
+  int bendRange;
+  byte expressionMode;
+  byte currentExpression;
+  bool arpeggioHoldMode;
+  bool sustainPedal;
+};
+
+ARPEGGIATOR arpeggiator;
 
 int thePressedKeyBuffer[] = { 0, 12, 24, 28, 31, 6, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
 int theNoteBuffer[] = { 5, 12, 24, 28, 31, 6, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
@@ -55,23 +90,15 @@ int theMatrix[][10] = { { -1, 8, 1, 1, 1, 1, -2, 1, 1, -4 },
                         { -1, 1, -1, 0, 0, 0, 0, 0, 0, 0 } };
 
 
-int currentNote = -1;
-int currentMidiBend = 0;
-int bendRange = 2;
-int arpeggiatorTrigInMillis;
-int arpeggiatorGateRatio;
 
-long lastArpAttackMs = 0;
 
-bool clockMode = false;
-bool arpeggioHoldMode = false;
-bool sustainPedal = false;
-#define EXPRESSION_MODE_VELOCITY  0
-#define EXPRESSION_MODE_AFTERTOUCH  1
-#define EXPRESSION_MODE_WHEEL  2
 
-byte expressionMode = EXPRESSION_MODE_VELOCITY;
-int currentExpression = 0;
+
+#define EXPRESSION_MODE_VELOCITY 0
+#define EXPRESSION_MODE_AFTERTOUCH 1
+#define EXPRESSION_MODE_WHEEL 2
+
+
 
 MIDI_CREATE_DEFAULT_INSTANCE();
 
@@ -106,12 +133,16 @@ void initialize() {
   setCurrentNote(0);
   setCurrentExpression(0);
   setBitchPend(0);
-  clockMode = false;
+  arpeggiator.clock.clockMode = false;
+  arpeggiator.bendRange = 2;
+  arpeggiator.currentMidiBend = 0;
+  arpeggiator.expressionMode = EXPRESSION_MODE_VELOCITY;
+  arpeggiator.currentExpression = 0;
   bufferUpChanged = true;
   bufferDownChanged = true;
 }
 void handleNoteOn(byte inChannel, byte inNote, byte inVelocity) {
-  if (expressionMode == EXPRESSION_MODE_VELOCITY) {
+  if (arpeggiator.expressionMode == EXPRESSION_MODE_VELOCITY) {
     setCurrentExpression(inVelocity);
   }
   addNoteToBuffer(inNote - 21);
@@ -127,21 +158,21 @@ void handlePitchBend(byte channel, int bend) {
 void handleControlChange(byte inChannel, byte number, byte value) {
   if (number == SUSTAIN_PEDAL) {
     if (value == 0) {
-        sustainPedal = false;
-        if (isSettingMode()) {
-          arpeggioHoldMode = false;
-        }
-    } else {
-      sustainPedal = true;
+      arpeggiator.sustainPedal = false;
       if (isSettingMode()) {
-        arpeggioHoldMode = true;
+        arpeggiator.arpeggioHoldMode = false;
+      }
+    } else {
+      arpeggiator.sustainPedal = true;
+      if (isSettingMode()) {
+        arpeggiator.arpeggioHoldMode = true;
       }
     }
   } else if (number == WHEEL) {
     if (isSettingMode() && value > 48) {
-      expressionMode = EXPRESSION_MODE_WHEEL;
+      arpeggiator.expressionMode = EXPRESSION_MODE_WHEEL;
     }
-    if (expressionMode == EXPRESSION_MODE_WHEEL) {
+    if (arpeggiator.expressionMode == EXPRESSION_MODE_WHEEL) {
       setCurrentExpression(value);
     }
   }
@@ -149,18 +180,57 @@ void handleControlChange(byte inChannel, byte number, byte value) {
 
 void handleAfterTouchChannel(byte channel, byte pressure) {
   if (isSettingMode() && pressure > 48) {
-    expressionMode = EXPRESSION_MODE_AFTERTOUCH;
+    arpeggiator.expressionMode = EXPRESSION_MODE_AFTERTOUCH;
   }
-  if (expressionMode == EXPRESSION_MODE_AFTERTOUCH) {
+  if (arpeggiator.expressionMode == EXPRESSION_MODE_AFTERTOUCH) {
     setCurrentExpression(pressure);
   }
 }
 
 
 void loop() {
+  arpeggiator.currentTime = millis();
+  readNanoPins();
   MIDI.read();
+  handleClock();
   handleMusic();
 }
+
+void readNanoPins() {
+  arpeggiator.nanoPins.arpeggiatorGateRatio = analogRead(A_IN_ARPEGGIATOR_GATE);
+  arpeggiator.nanoPins.arpeggiatorSpeed = analogRead(A_IN_ARPEGGIATOR_SPEED);
+  arpeggiator.nanoPins.argeggioType = analogRead(A_IN_ARPEGGIATOR_TYPE);
+  arpeggiator.nanoPins.isArpeggiatorMode = digitalRead(D_IN_ARPEGGIATOR_OR_SINGLE);
+  arpeggiator.nanoPins.isSequencerMode = digitalRead(D_IN_SEQUENCER);
+  arpeggiator.nanoPins.isSettingMode = digitalRead((D_IN_MODE));
+  arpeggiator.nanoPins.isTP_1 = digitalRead((D_IN_NOTE_PRIORITY_1));
+  arpeggiator.nanoPins.isTP_2 = digitalRead((D_IN_NOTE_PRIORITY_2));
+  arpeggiator.nanoPins.clockIn = digitalRead(D_IN_TRIG);
+}
+
+
+
+void handleClock() {
+
+  if (arpeggiator.clock.currentClock != arpeggiator.nanoPins.clockIn) {
+    arpeggiator.clock.clockMode = true;
+    arpeggiator.clock.currentClock = arpeggiator.nanoPins.clockIn;
+    if (!arpeggiator.clock.currentClock) {
+      if (arpeggiator.clock.lastClockSignal > 0) {
+        arpeggiator.clock.clockDuration = arpeggiator.currentTime - arpeggiator.clock.lastClockSignal;
+      } else {
+        arpeggiator.clock.clockDuration = 500;  // just guessing
+      }
+      arpeggiator.clock.lastClockSignal = arpeggiator.currentTime;
+      ++arpeggiator.clock.clockCounter;
+    }
+  } else {
+    if (arpeggiator.clock.clockMode && arpeggiator.currentTime - arpeggiator.clock.lastClockSignal > 8000) {
+      arpeggiator.clock.clockMode = false;
+    }
+  }
+}
+
 
 void handleMusic() {
   if (isArpeggiatorMode()) {
@@ -181,7 +251,7 @@ boolean isSettingMode() {
 void handleSingleNote() {
   int nextNoteToPlay = getNextSingleNoteToPlay();
   setCurrentNote(nextNoteToPlay);
-  if (currentNote == -1) {
+  if (arpeggiator.currentNote == -1) {
     setGateOff();
   } else {
     setGateOn();
@@ -263,22 +333,67 @@ int *getSelectedMatrix() {
 }
 
 boolean isNextArpNoteToBePlayed() {
-  return millis() - lastArpAttackMs > arpeggiatorTrigInMillis;
+  if (arpeggiator.clock.clockMode) {
+    //             0  1.    2.    3.    4   5   6   7
+    // ratios -> 1/8  1/4   1/3   1/2   1   2   4   8
+    int divide = 1;
+    int multiple = 8;
+
+    if (arpeggiator.nanoPins.arpeggiatorSpeed < 1 * 128) {
+      divide = 8;
+      multiple = 1;
+    } else if (arpeggiator.nanoPins.arpeggiatorSpeed < 256) {
+      divide = 4;
+      multiple = 1;
+    } else if (arpeggiator.nanoPins.arpeggiatorSpeed < 3 * 128) {
+      divide = 3;
+      multiple = 1;
+    } else if (arpeggiator.nanoPins.arpeggiatorSpeed < 4 * 128) {
+      divide = 2;
+      multiple = 1;
+    } else if (arpeggiator.nanoPins.arpeggiatorSpeed < 5 * 128) {
+      divide = 1;
+      multiple = 1;
+    } else if (arpeggiator.nanoPins.arpeggiatorSpeed < 6 * 128) {
+      divide = 1;
+      multiple = 2;
+    } else if (arpeggiator.nanoPins.arpeggiatorSpeed < 7 * 128) {
+      divide = 1;
+      multiple = 4;
+    }
+
+
+
+    if (arpeggiator.clock.lastClockSignal > arpeggiator.lastArpAttackMs && arpeggiator.clock.clockCounter == multiple) {
+      arpeggiator.clock.clockCounter = 0;
+      arpeggiator.nextGateLength = ((((arpeggiator.clock.clockDuration * multiple) / divide) / 8) * (arpeggiator.nanoPins.arpeggiatorGateRatio / 8)) / 16;
+      return true;
+    } else if (divide > 1 && arpeggiator.currentTime - arpeggiator.lastArpAttackMs > (arpeggiator.clock.clockDuration / divide + 1)) {
+      arpeggiator.nextGateLength = ((((arpeggiator.clock.clockDuration * multiple) / divide) / 8) * (arpeggiator.nanoPins.arpeggiatorGateRatio / 8)) /16;
+      arpeggiator.clock.clockCounter = 0;
+      return true;
+    }
+    return false;
+  } else {
+    if (arpeggiator.currentTime - arpeggiator.lastArpAttackMs > arpeggiator.nanoPins.arpeggiatorSpeed) {
+      arpeggiator.nextGateLength = ((arpeggiator.nanoPins.arpeggiatorSpeed / 8) * (arpeggiator.nanoPins.arpeggiatorGateRatio / 8)) / 16;
+      return true;
+    }
+    return false;
+  }
 }
 
 boolean isArpNoteOtBeSetOff() {
-  return (millis() - lastArpAttackMs > (arpeggiatorTrigInMillis / 8) * (arpeggiatorGateRatio / 8) / 16);
+  return arpeggiator.currentTime - arpeggiator.lastArpAttackMs > arpeggiator.nextGateLength;
 }
 
 void handleArpeggiator() {
-  arpeggiatorTrigInMillis = analogRead(A_IN_ARPEGGIATOR_SPEED);
-  arpeggiatorGateRatio = analogRead(A_IN_ARPEGGIATOR_GATE);
   if (isNextArpNoteToBePlayed()) {
     int noteToPlay = nextArpeggiatorNote(getSelectedNoteBuffer(), getSelectedMatrix());
     setCurrentNote(noteToPlay);
-    
-    lastArpAttackMs = millis();
-    if (currentNote > -1) {
+
+    arpeggiator.lastArpAttackMs = arpeggiator.currentTime;
+    if (arpeggiator.currentNote > -1) {
       setGateOn();
     }
   }
@@ -316,7 +431,7 @@ void removeNoteFromBuffer(int note) {
       --thePressedKeyBuffer[0];
     }
   }
-  if (!digitalRead(D_IN_ARPEGGIATOR_OR_SINGLE) || !arpeggioHoldMode) {
+  if (!arpeggiator.nanoPins.isArpeggiatorMode || !arpeggiator.arpeggioHoldMode) {
     for (int i = 0; i <= thePressedKeyBuffer[0]; ++i) {
       theNoteBuffer[i] = thePressedKeyBuffer[i];
     }
@@ -351,43 +466,43 @@ void setGateOn() {
 }
 
 void setCurrentExpression(int expression) {
-  if (currentExpression != expression) {
-    currentExpression = expression;
-    setVoltage(D_OUT_DAC_1,1,1, currentExpression * 32);
+  if (arpeggiator.currentExpression != expression) {
+    arpeggiator.currentExpression = expression;
+    setVoltage(D_OUT_DAC_1, 1, 1, arpeggiator.currentExpression * 32);
   }
 }
 
 void setBitchPend(int pitchBend) {
-  if (currentMidiBend != pitchBend) {
-    currentMidiBend = pitchBend;
+  if (arpeggiator.currentMidiBend != pitchBend) {
+    arpeggiator.currentMidiBend = pitchBend;
     adjustNote();
   }
 }
 
 void setCurrentNote(int noteToPlay) {
-  if (noteToPlay != currentNote) {
-      currentNote = noteToPlay;
-      adjustNote();
-  } 
+  if (noteToPlay != arpeggiator.currentNote) {
+    arpeggiator.currentNote = noteToPlay;
+    adjustNote();
+  }
 }
-  
+
 
 void adjustNote() {
-  if (currentNote < 0) {
+  if (arpeggiator.currentNote < 0) {
     setGateOff();
   } else {
-    if (currentNote > 48) {
-      currentNote = 48;
+    if (arpeggiator.currentNote > 48) {
+      arpeggiator.currentNote = 48;
     }
-    int voltage = currentNote * SEMITONE_VOLTAGE;
-    voltage += (currentMidiBend * bendRange * SEMITONE_VOLTAGE) / 64;
+    int voltage = arpeggiator.currentNote * SEMITONE_VOLTAGE;
+    voltage += (arpeggiator.currentMidiBend * arpeggiator.bendRange * SEMITONE_VOLTAGE) / 64;
     setVoltage(D_OUT_DAC_1, 0, 1, voltage);
     if (DEBUG) {
       for (int i = 0; i <= theNoteBuffer[0]; ++i) {
         Serial.print(theNoteBuffer[i]);
         Serial.print(" ");
       }
-      Serial.println(currentNote);
+      Serial.println(arpeggiator.currentNote);
     }
   }
 }
