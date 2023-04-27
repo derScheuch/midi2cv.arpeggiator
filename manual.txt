@@ -9,7 +9,7 @@ The maximum voltage of the CV and the EXPR out is 4V.
 For now the midi-clock will be negelected. 
 
 Switch 1)
-Switch between single mode and automatc modes.
+Switch between single mode and automatic modes.
 In single mode only one note will be played and Arpoli will act like a "normal" Midi2CV interface
 in automatic mode either arpeggios (arpeggiomode) or a programmed sequence (sequenceermode) will be played
 The Voltage on CV depends on the played note and the pitchbend
@@ -18,7 +18,7 @@ The Voltage on CV depends on the played note and the pitchbend
 Poti 1) 
 if in arpeggio mode, different patterns will be played depending on the potentiometers value
 no effect in single or sequencer mode
-//PATTERN erklären
+See below to find the explanation of an arpeggiopattern and how to change these.
 
 Poti 2)
 will determine the speed of the played notes in automatic modes.
@@ -27,7 +27,7 @@ no effect in Single mode
 
 Poti 3)
 will determine the length of the gate of one note in automatic mode.
-Depends on the timeinnterval between tow played notes and will be recaclulated if this time changes.
+Depends on the timeinnterval between two played notes and will be recaclulated if this time changes.
 TBA
 Fully rotated clockwise will result in a gate "slightly" longer than the timeinterval between two notes.
 Fully rotated anticlockwise will result in a "very short" gate of 10ms.
@@ -93,6 +93,8 @@ Example: play a chord, relase all keys, the arpeggio will still play unless a ne
 
 sequencermode (to be tested)
 when switching the sequencerSwitch you are automatically in sequencermode_stop.
+This can also be a convenient way to kind of reset the arpOli, as it clears all noteBuffers and modes, 
+if for example a midi note off sustain pedal off was not detected. 
 To record a new sequence, press the configMode Button once and play your stepsequencernotes. 
 After ending this, press the configMode Button to end the recording. If you play a not that
 is out of the range of the arpOli you insert a pause instead.

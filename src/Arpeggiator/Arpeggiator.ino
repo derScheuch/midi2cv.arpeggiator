@@ -143,21 +143,27 @@ void setup() {
 }
 
 void initialize() {
-  theNoteBuffer[0] = 0;
-  notePointer = 0;
-  matrixPointer = 0;
-  setGateOff();
-  setCurrentNote(0);
-  setCurrentExpression(0);
-  setBitchPend(0);
+  resetBuffers();
   resetClock(arpeggiator.clock);
   arpeggiator.bendRange = 2;
   arpeggiator.currentMidiBend = 0;
   arpeggiator.expressionMode = EXPRESSION_MODE_VELOCITY;
   arpeggiator.currentExpression = 0;
+}
+
+void resetBuffers() {
+  arpeggiator.sustainPedal = false;
+  theNoteBuffer[0] = 0;
+  notePointer = 0;
+  matrixPointer = 0;
+  setBitchPend(0);
+  setGateOff();
+  setCurrentNote(0);
+  setCurrentExpression(0);
   bufferUpChanged = true;
   bufferDownChanged = true;
 }
+
 void handleNoteOn(byte inChannel, byte inNote, byte inVelocity) {
   if (arpeggiator.nanoPins.isConfigMode) {
     if (thePressedKeyBuffer[0] == 1) {
@@ -264,6 +270,7 @@ void prepareNanoPins() {
 
 void prepareSequencer() {
   if (arpeggiator.sequencer.mode == SEQUENCER_OFF && arpeggiator.nanoPins.isSequencerMode) {
+    resetBuffers(); 
     arpeggiator.sequencer.mode = SEQUENCER_MODE_STOP;
     arpeggiator.sequencer.shift = 0;
   } else if (arpeggiator.sequencer.mode != SEQUENCER_OFF && !arpeggiator.nanoPins.isSequencerMode) {
