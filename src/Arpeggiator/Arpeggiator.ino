@@ -121,8 +121,8 @@ MIDI_CREATE_DEFAULT_INSTANCE();
 
 void setup() {
   pinMode(D_IN_ARPEGGIATOR_OR_SINGLE, INPUT);
-  pinMode(D_IN_NOTE_PRIORITY_1, INPUT);  // 0 "normal mode" // 1 -> spcial modes
-  pinMode(D_IN_NOTE_PRIORITY_2, INPUT);  //
+  pinMode(D_IN_NOTE_PRIORITY_1, INPUT);  
+  pinMode(D_IN_NOTE_PRIORITY_2, INPUT);  
   pinMode(D_IN_SEQUENCER, INPUT);
   pinMode(D_IN_MODE, INPUT_PULLUP);
   pinMode(D_IN_TRIG, INPUT_PULLUP);
@@ -172,9 +172,8 @@ void handleNoteOn(byte inChannel, byte inNote, byte inVelocity) {
       arpeggiator.expressionMode = EXPRESSION_MODE_VELOCITY;
     }
   }
-  if (arpeggiator.expressionMode == EXPRESSION_MODE_VELOCITY) {
-    setCurrentExpression(inVelocity);
-  }
+
+  
 
   if (arpeggiator.sequencer.mode != SEQUENCER_OFF) {
     if (arpeggiator.sequencer.mode == SEQUENCER_MODE_RECORD) {
@@ -189,6 +188,9 @@ void handleNoteOn(byte inChannel, byte inNote, byte inVelocity) {
       replaceNoteInSequencer(inNote);
     }
   } else {
+    if (arpeggiator.expressionMode == EXPRESSION_MODE_VELOCITY) {
+      setCurrentExpression(inVelocity);
+    }
     addNoteToBuffer(inNote);
   }
 }
@@ -558,7 +560,13 @@ int nextArpeggiatorNote(int *noteBuffer, int *matrix) {
     matrixPointer = 0;
   }
   int nextIndex = matrix[matrixPointer + 2];
-  notePointer += noteBuffer[0] + nextIndex;
+  if (nextIndex == MATRIX_BEGIN) {
+    notePointer = 0;
+  } else if (nextIndex == MATRIX_RANDOM) {
+    notePointer = rand();
+  } else {
+    notePointer += noteBuffer[0] + nextIndex;
+  }
   matrixPointer += 1;
 
   return nextNote;
