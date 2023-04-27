@@ -1,0 +1,139 @@
+The arpOli
+
+
+Midi in)
+following commands/controls are recognized and somehow control the arpOli
+Note In, Note off, Velocity, Picth, Modulation Wheel, Aftertocuh, Sustain Pedal 
+Playable notes are from c2 to c6 and will be transformed to the according voltage.
+The maximum voltage of the CV and the EXPR out is 4V.
+For now the midi-clock will be negelected. 
+
+Switch 1)
+Switch between single mode and automatc modes.
+In single mode only one note will be played and Arpoli will act like a "normal" Midi2CV interface
+in automatic mode either arpeggios (arpeggiomode) or a programmed sequence (sequenceermode) will be played
+The Voltage on CV depends on the played note and the pitchbend
+
+
+Poti 1) 
+if in arpeggio mode, different patterns will be played depending on the potentiometers value
+no effect in single or sequencer mode
+//PATTERN erklären
+
+Poti 2)
+will determine the speed of the played notes in automatic modes.
+If an external (Jack 4) clock/trigger signal exists the poti will act like a clock divider/multiplier
+no effect in Single mode
+
+Poti 3)
+will determine the length of the gate of one note in automatic mode.
+Depends on the timeinnterval between tow played notes and will be recaclulated if this time changes.
+TBA
+Fully rotated clockwise will result in a gate "slightly" longer than the timeinterval between two notes.
+Fully rotated anticlockwise will result in a "very short" gate of 10ms.
+
+Switch 2)
+Arpeggiomode up -> "normal arpegggiomode" the notes to be played will be sorted upwards. 
+The real order will be determined by the pattern though
+Arpeggiomode down -> "special arpeggiomodes" a<ctivated - see switch 3)
+Singlemode up -> "normal singlemode" the last note pressed will be played 
+Singlemode down -> special singelmodes activated -> see witch 3)
+Sequencer up -> normal sequencermode the notes will be played in the recorded order
+Sequencer down -> special sequencermode activated see swicth 3)
+
+Switch 3)
+special modes, avaipable if switch 2 is down
+
+arpeggiospecialmode 1 -> the notes to be played will be played in downwards order
+The real order will be changed by the used pattern though
+arpeggiospecialmode 2 -> the notes to be plöayed will be played in order as they wer pressed on the keyboard
+The real order will be changed by the used pattern though
+
+singlespecialmode 1 -> only the highest currently pressed note will be played
+singlespecialmode 2 -> only the lowest currently pressed note will be played
+
+sequencedspecialmode 1 -> the order of the sequence will be reversed
+sequencedspecialmode 2 -> "normal" and reversed order will be played alternating 
+
+Switch 4)
+activates the sequencermode ()
+
+Jack 1) 
+CV out ... 
+
+Jack 2)
+Expression out. depends on the mode, which midi event will be converted to Voltage and sent to this jack.
+You can choose between velocity, modulation wheel and aftertouch (see configButton)
+Max Voltage output is 4V
+
+Jack 3)
+Gate out -> if at least one note is actually played (either in single or automatic mode) the gate is set to on.
+in single mode the gate will set to off, only if no key is pressed or sustainoedal is pressed.
+in automatic modes the gate off will be set depending omn the gate length calculation (see Poti 3)
+
+Jack 4)
+Clock In
+On a rising flank, the clockmode will be activated . In this mode the speed of the automatci modes 
+will be controlled by the clock (and the clock divider/multiplier explained for Poti 2)
+The clockmode will only be deactivated when no signal change occured for eight seconds. 
+
+ConfigButton
+Can be used for various settings.
+1) if pressed and a single note is played the expression mode is set to velocity
+2) if pressed and the modulation wheel is moved heavily the expression mode is set to modulation wheel
+3) if pressed and the aftzertouch is used heavily the expression mode is set to aftertouch
+4) if pressed ant the sustainpedal is pressed the arpeggiatorHoldMode (see below) is activated
+5) if pressed and the sustainpedal is released the arpeggiatorHoldMode (see below) is deactivatd
+6) (to be implemented) if pressed and one interval is played on the keyboard the pitch bend range will be set to the notes interval (default is 2)
+
+arpeggiatorHoldMode
+is kind of a virtual sustainPedal when in arpeggiator-Mode
+Any pressed or released note will be held unless a new single note is pressed.
+Example: play a chord, relase all keys, the arpeggio will still play unless a new key or chord is pressed.
+
+sequencermode (to be tested)
+when switching the sequencerSwitch you are automatically in sequencermode_stop.
+To record a new sequence, press the configMode Button once and play your stepsequencernotes. 
+After ending this, press the configMode Button to end the recording. If you play a not that
+is out of the range of the arpOli you insert a pause instead.
+You play a sequence press a key on the keyboard. Depending on the key you pressed the sequence will be shifted
+in pitch (C4 -> no shift, F4 shift a quart ando so on).
+If you press a key while the sequence is played the sequence will be shifted with the next note to be played
+If you press a key while the sequence is played and you hold the configButton the sequence will not be shifted (it 
+will hold its former shiftstatus, though) and the sequence will be  
+chqnged on the current position and the note in the sequence will be replaced by your pressed note
+To stop the sequence just switch off the sequencerSwicth. The recorded sequence will not be deleted unless you record a new on.
+
+
+Patterns:
+Arpeggiopatterns can be stored in the arpOli.
+the arpOli stores the keys you press in a notebuffer (special case is while pressing sustain pedal or if you are in arpeggiatorHoldeMode)
+notebuffers can have an order (upwards, downwards or order you pressed the key) 
+a pattern is simply a sequnce of simple instructions to determine the pointer to the next note to be played in the notebuffer 
+a "1" means: just take the next note in the buffer, raise the pointer by one
+a "2" means: just take the 2nd next note, raise the pointer by two
+a "3" means: ..... you get the point.
+a "0" means: repeat the last note, 
+its also possible to go backwards in the notebuffer by setting negative numbers
+a "r" means: jump to a random note in the buffer, random notepointer
+a "b" means: go to the first note of the buffer, notepointer = 0
+if a pattern comes to its end it will restart from beginnjng 
+if a notepointer is out of the notebuffers range (either smaller than 0 or bigger than the buffers length) 
+the notepointer will be modded by the notebuffers current length
+
+a very simple pattern is
+1 -> it will just cycle through the notebuffer
+0,1 -> cycle through the buffer but play every note twice
+R,B -> the sequener plays the first not of the buffer, than a random one and the we will start this again
+2,-1 -> press all keys of a scale see what it does :-)
+A pattern can also have a fixed length (not the length of the patterndescription) if it reaches the length of the pattern the 
+begin of the nest pattern will lead to an B-"command" Begin the notebuffer again.
+
+Imagine a 5 note chord pressed on the keyboard.  (c1,g1,c2,e2,g2) 
+the first matrixpattern above (only the "1") will lead to a sequence of c1,g1,c2,e2,g2,c1,g1,c2,e2,g2,c1,g1,c2,e2,g2 
+kind of odd when you are in a 4/4 or similar mode. If this pattern has a fixed length of 8 it would lead to
+c1,g1,c2,e2,g2,c1,g1,c2,c1,g1,c2,e2,g2,c1,g1,c2, every 8th note starting with the first note of the buffer.
+
+These patterns can be programmed via keyboard if in patternChangeMode
+
+
