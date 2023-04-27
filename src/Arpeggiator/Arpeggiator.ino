@@ -159,9 +159,17 @@ void initialize() {
   bufferDownChanged = true;
 }
 void handleNoteOn(byte inChannel, byte inNote, byte inVelocity) {
+  if (arpeggiator.nanoPins.isConfigMode) {
+    if (thePressedKeyBuffer[0] == 1) {
+      arpeggiator.bendRange = abs(inNote - thePressedKeyBuffer[1]);
+    } else {
+      arpeggiator.expressionMode = EXPRESSION_MODE_VELOCITY;
+    }
+  }
   if (arpeggiator.expressionMode == EXPRESSION_MODE_VELOCITY) {
     setCurrentExpression(inVelocity);
   }
+
   if (arpeggiator.sequencer.mode != SEQUENCER_OFF) {
     if (arpeggiator.sequencer.mode == SEQUENCER_MODE_RECORD) {
       addNoteToSequencer(inNote);
@@ -524,9 +532,10 @@ void removeNoteFromBuffer(int note) {
       --thePressedKeyBuffer[0];
     }
   }
-  if (!arpeggiator.nanoPins.isArpeggiatorMode || !arpeggiator.arpeggioHoldMode) {
-    for (int i = 0; i <= thePressedKeyBuffer[0]; ++i) {
-      theNoteBuffer[i] = thePressedKeyBuffer[i];
+  if ((arpeggiator.nanoPins.isArpeggiatorMode && !arpeggiator.arpeggioHoldMode) || 
+      ( !arpeggiator.sustainPedal)) {
+       for (int i = 0; i <= thePressedKeyBuffer[0]; ++i) {
+         theNoteBuffer[i] = thePressedKeyBuffer[i];
     }
   }
 }
@@ -603,6 +612,9 @@ void adjustNote() {
 
 
 void setVoltage(int dacpin, bool channel, bool gain, unsigned int mV) {
+  if (mV > 4095) {
+    mV = 4095;
+  }
   unsigned int command = channel ? 0x9000 : 0x1000;
 
   command |= gain ? 0x0000 : 0x2000;

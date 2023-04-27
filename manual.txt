@@ -84,7 +84,7 @@ Can be used for various settings.
 3) if pressed and the aftzertouch is used heavily the expression mode is set to aftertouch
 4) if pressed ant the sustainpedal is pressed the arpeggiatorHoldMode (see below) is activated
 5) if pressed and the sustainpedal is released the arpeggiatorHoldMode (see below) is deactivatd
-6) (to be implemented) if pressed and one interval is played on the keyboard the pitch bend range will be set to the notes interval (default is 2)
+6) (to be tested) if pressed and one interval is played on the keyboard the pitch bend range will be set to the notes interval (default is 2)
 
 arpeggiatorHoldMode
 is kind of a virtual sustainPedal when in arpeggiator-Mode
