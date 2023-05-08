@@ -91,20 +91,22 @@ is kind of a virtual sustainPedal when in arpeggiator-Mode
 Any pressed or released note will be held unless a new single note is pressed.
 Example: play a chord, relase all keys, the arpeggio will still play unless a new key or chord is pressed.
 
-sequencermode (to be tested)
+sequencermode 
 when switching the sequencerSwitch you are automatically in sequencermode_stop.
 This can also be a convenient way to kind of reset the arpOli, as it clears all noteBuffers and modes, 
-if for example a midi note off sustain pedal off was not detected. 
+if for example a midi note off or a sustain pedal off was not detected. 
 To record a new sequence, press the configMode Button once and play your stepsequencernotes. 
+A new sequence can only be recorded when the former sequence was deleted (or no sequence was recorded before)  see below...
 After ending this, press the configMode Button to end the recording. If you play a not that
 is out of the range of the arpOli you insert a pause instead.
 You play a sequence press a key on the keyboard. Depending on the key you pressed the sequence will be shifted
-in pitch (C4 -> no shift, F4 shift a quart ando so on).
+in pitch (C3 -> no shift, F3 shift a quart ando so on).
 If you press a key while the sequence is played the sequence will be shifted with the next note to be played
 If you press a key while the sequence is played and you hold the configButton the sequence will not be shifted (it 
 will hold its former shiftstatus, though) and the sequence will be  
 chqnged on the current position and the note in the sequence will be replaced by your pressed note
 To stop the sequence just switch off the sequencerSwicth. The recorded sequence will not be deleted unless you record a new on.
+The stored sequence will be deleted by switching to sequnecermode while holding the config button.
 
 
 Patterns:
