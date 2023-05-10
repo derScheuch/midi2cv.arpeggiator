@@ -91,7 +91,6 @@ struct ARPEGGIATOR {
   bool arpeggioHoldMode;
   bool sustainPedal;
   bool currentGate;
-  
 };
 
 
@@ -187,9 +186,9 @@ void handleNoteOn(byte inChannel, byte inNote, byte inVelocity) {
       addNoteToSequencer(inNote);
       setCurrentNote(inNote);
     } else if (arpeggiator.sequencer.mode == SEQUENCER_MODE_PLAY) {
-      arpeggiator.sequencer.shift = inNote -60;
+      arpeggiator.sequencer.shift = inNote - 60;
     } else if (arpeggiator.sequencer.mode == SEQUENCER_MODE_STOP) {
-      arpeggiator.sequencer.shift = inNote -60;
+      arpeggiator.sequencer.shift = inNote - 60;
       arpeggiator.sequencer.mode = SEQUENCER_MODE_PLAY;
     } else if (arpeggiator.sequencer.mode == SEQUENCVER_MODE_OVERWRITE) {
       replaceNoteInSequencer(inNote);
@@ -345,7 +344,6 @@ void prepareSequencer() {
 void prepareClock() {
 
   if (arpeggiator.clock.currentClock != arpeggiator.nanoPins.clockIn) {
-    Serial.print("WWT");
     arpeggiator.clock.clockMode = true;
     arpeggiator.clock.currentClock = arpeggiator.nanoPins.clockIn;
     // In fact the transistor that shields the nano input pin
@@ -572,6 +570,8 @@ void addNoteToBuffer(int note) {
     thePressedKeyBuffer[thePressedKeyBuffer[0]] = note;
     if (thePressedKeyBuffer[0] == 1) {
       theNoteBuffer[0] = 0;
+      // start the eqeunce or arpeggio immediately
+      arpeggiator.lastAutomaticNoteAttackMs = 0;
     }
     ++theNoteBuffer[0];
     theNoteBuffer[theNoteBuffer[0]] = note;
@@ -591,7 +591,8 @@ void removeNoteFromBuffer(int note) {
       --thePressedKeyBuffer[0];
     }
   }
-  if ((arpeggiator.nanoPins.isArpeggiatorMode && !arpeggiator.arpeggioHoldMode) || (!arpeggiator.sustainPedal)) {
+  if (!(
+        (arpeggiator.nanoPins.isArpeggiatorMode && arpeggiator.arpeggioHoldMode) || (!arpeggiator.nanoPins.isArpeggiatorMode && arpeggiator.sustainPedal))) {
     for (int i = 0; i <= thePressedKeyBuffer[0]; ++i) {
       theNoteBuffer[i] = thePressedKeyBuffer[i];
     }
