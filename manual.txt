@@ -10,29 +10,29 @@ For now the midi-clock will be negelected.
 
 Switch 1)
 Switch between single mode and automatic modes.
-In single mode only one note will be played and Arpoli will act like a "normal" Midi2CV interface
+In single mode only one note will be played and Arpoli will act like a "normal" Midi2CV interface. If more than 
+note is pressed simultanously the actual note that is played depends on the NotePriority-Switches, though.
 in automatic mode either arpeggios (arpeggiomode) or a programmed sequence (sequenceermode) will be played
 The Voltage on CV depends on the played note and the pitchbend
 
-
 Poti 1) 
 if in arpeggio mode, different patterns will be played depending on the potentiometers value
-no effect in single or sequencer mode
+in sequencermode, different sequences can be recoreded an played depending on the potis value (TBD)
+no effect in single mode
 See below to find the explanation of an arpeggiopattern and how to change these.
 
 Poti 2)
-will determine the speed of the played notes in automatic modes.
+will determine the speed of the played notes in automatic modes. 10ms is the slowest, 4s is the longest.
 If an external (Jack 4) clock/trigger signal exists the poti will act like a clock divider/multiplier
 no effect in Single mode
 
 Poti 3)
 will determine the length of the gate of one note in automatic mode.
 Depends on the timeinnterval between two played notes and will be recaclulated if this time changes.
-TBA
 Fully rotated clockwise will result in a gate "slightly" longer than the timeinterval between two notes.
-Fully rotated anticlockwise will result in a "very short" gate of 10ms.
+Fully rotated anticlockwise will result in a "very short" gate, possibly too short to be sent or reconginized correctly.
 
-Switch 2)
+Switch 2) NotePriority_1
 Arpeggiomode up -> "normal arpegggiomode" the notes to be played will be sorted upwards. 
 The real order will be determined by the pattern though
 Arpeggiomode down -> "special arpeggiomodes" a<ctivated - see switch 3)
@@ -41,8 +41,8 @@ Singlemode down -> special singelmodes activated -> see witch 3)
 Sequencer up -> normal sequencermode the notes will be played in the recorded order
 Sequencer down -> special sequencermode activated see swicth 3)
 
-Switch 3)
-special modes, avaipable if switch 2 is down
+Switch 3) NotePriority_2
+special modes, available if switch 2 is down
 
 arpeggiospecialmode 1 -> the notes to be played will be played in downwards order
 The real order will be changed by the used pattern though
@@ -56,7 +56,7 @@ sequencedspecialmode 1 -> the order of the sequence will be reversed
 sequencedspecialmode 2 -> "normal" and reversed order will be played alternating 
 
 Switch 4)
-activates the sequencermode ()
+activates the sequencermode (see below)
 
 Jack 1) 
 CV out ... 
@@ -84,7 +84,8 @@ Can be used for various settings.
 3) if pressed and the aftzertouch is used heavily the expression mode is set to aftertouch
 4) if pressed ant the sustainpedal is pressed the arpeggiatorHoldMode (see below) is activated
 5) if pressed and the sustainpedal is released the arpeggiatorHoldMode (see below) is deactivatd
-6) (to be tested) if pressed and one interval is played on the keyboard the pitch bend range will be set to the notes interval (default is 2)
+6) if pressed and one interval is played on the keyboard the pitch bend range will be set to the notes interval (default is 2)
+7) for configModes in SequencerMode see chapter below
 
 arpeggiatorHoldMode
 is kind of a virtual sustainPedal when in arpeggiator-Mode
@@ -107,7 +108,6 @@ will hold its former shiftstatus, though) and the sequence will be
 chqnged on the current position and the note in the sequence will be replaced by your pressed note
 To stop the sequence just switch off the sequencerSwicth. The recorded sequence will not be deleted unless you record a new on.
 The stored sequence will be deleted by switching to sequnecermode while holding the config button.
-
 
 Patterns:
 Arpeggiopatterns can be stored in the arpOli.
